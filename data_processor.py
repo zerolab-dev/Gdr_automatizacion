@@ -87,7 +87,13 @@ def procesar_datos_por_cite(df, cite, anio, mes_inicio_ui, mes_fin_ui):
 def calcular_valor_alcanzado(df_res):
     alertas = []
     df_res = df_res.copy()
-    df_res["Valor Alcanzado"] = ""
+    # Usar dtype object porque esta columna puede contener números, porcentajes y "-".
+    # Pandas recientes pueden inferir dtype string y rechazar luego valores numéricos.
+    df_res["Valor Alcanzado"] = pd.Series(
+        [None] * len(df_res),
+        index=df_res.index,
+        dtype="object"
+    )
 
     for id_ind, config in CONFIG_INDICADORES.items():
         mask_ind = df_res["Indicador"] == config["nombre"]
