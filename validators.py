@@ -1,5 +1,11 @@
 import pandas as pd
-from config import COLUMNAS_REQUERIDAS, MESES_COLUMNAS
+from config import (
+    COLUMNAS_REQUERIDAS,
+    COLUMNAS_METAS_REQUERIDAS,
+    COLUMNAS_UP_REQUERIDAS,
+    MESES_COLUMNAS,
+)
+
 
 def _normalizar_tipo(serie):
     return (
@@ -8,6 +14,7 @@ def _normalizar_tipo(serie):
         .str.strip()
         .replace({"": "vacío", "nan": "vacío", "NaN": "vacío"})
     )
+
 
 def validar_datos_entrada(df):
     """Valida estructura y consistencia del consolidado sin ocultar errores críticos."""
@@ -75,3 +82,57 @@ def validar_datos_entrada(df):
             )
 
     return True, "Archivo validado correctamente.", advertencias
+
+
+def validar_metas(df_metas):
+    faltantes = [c for c in COLUMNAS_METAS_REQUERIDAS if c not in df_metas.columns]
+    if faltantes:
+        return False, f"El archivo de metas no contiene: {', '.join(faltantes)}"
+
+    df_metas["CITE"] = df_metas["CITE"].astype(str).str.strip()
+    if df_metas["CITE"].duplicated().any():
+        duplicados = df_metas.loc[df_metas["CITE"].duplicated(keep=False), "CITE"].unique()
+        return False, "Hay CITE duplicados en metas: " + ", ".join(map(str, duplicados))
+
+    for col in COLUMNAS_METAS_REQUERIDAS[1:]:
+        if pd.to_numeric(df_metas[col], errors="coerce").isna().any():
+            return False, f"La columna '{col}' contiene metas vacías o no numéricas."
+
+    return True, "Archivo de metas válido."
+
+
+def validar_listado_up(df_up):
+    faltantes = [c for c in COLUMNAS_UP_REQUERIDAS if c not in df_up.columns]
+    if faltantes:
+        return False, f"El listado de UP no contiene: {', '.join(faltantes)}", []
+
+    df_up["CITE"] = df_up["CITE"].astype(str).str.strip()
+    advertencias = []
+
+    if (df_up["CITE"] == "").any():
+        return False, "Existen registros del listado UP sin CITE.", []
+
+    if df_up["RUC/DNI/CE/OTROS"].isna().any():
+        advertencias.append("Existen registros del listado UP sin RUC/DNI/CE/OTROS.")
+
+    if df_up["RAZON SOCIAL / APELLIDOS Y NOMBRES"].isna().any():
+        advertencias.append("Existen registros del listado UP sin razón social/nombre.")
+
+    return True, "Listado UP válido.", advertencias
+
+
+def validar_cruces(df_consolidado, df_metas, df_up):
+    """Comprueba coincidencia exacta de nombres entre las tres fuentes."""
+    cites = set(df_consolidado["cite_ut"].dropna().astype(str).str.strip())
+    metas = set(df_metas["CITE"].dropna().astype(str).str.strip())
+    listado = set(df_up["CITE"].dropna().astype(str).str.strip())
+
+    sin_meta = sorted(cites - metas)
+    sin_listado = sorted(cites - listado)
+    mensajes = []
+    if sin_meta:
+        mensajes.append("Sin meta: " + ", ".join(sin_meta))
+    if sin_listado:
+        mensajes.append("Sin listado UP Indicador 1: " + ", ".join(sin_listado))
+
+    return len(mensajes) == 0, mensajes
